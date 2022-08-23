@@ -1,6 +1,7 @@
 #include "demos.hpp"
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <signal.h>
 
 #if (defined __linux__) || (defined __APPLE__) ||                              \
@@ -8,7 +9,7 @@
 
 #include <unistd.h>
 
-#endif
+#ifdef __x86_64__
 
 void test_int3() {
   asm(".intel_syntax noprefix");
@@ -33,9 +34,33 @@ end:
   return 0;
 }
 
+#elif defined(__aarch64__)
+int test_trap_flag() {
+
+  asm("brk 0xf000\n"
+      "mov x0, 1\n"
+      "mov x1, 2\n"
+      "add x2, x0, x1");
+end:
+  return 0;
+}
+#endif
+
+int trigger = 0;
+
 void signalHandler(int32_t const code, siginfo_t *const si, void *const ptr) {
   ucontext_t *const uc = reinterpret_cast<ucontext_t *>(ptr);
   if (code == SIGTRAP) {
+    printf("ptr is %p\n", ptr);
+#ifdef __aarch64__
+    if (trigger == 0) {
+      uc->uc_mcontext.pstate |= (1 << 21);
+      trigger = 1;
+    } else {
+      exit(0);
+    }
+
+#endif
 
     return;
   } else {
@@ -48,9 +73,35 @@ void signalHandler(int32_t const code, siginfo_t *const si, void *const ptr) {
 void hardware_single_step_demo() {
   struct sigaction sa = {};
   sa.sa_sigaction = signalHandler;
-  constexpr uint32_t sa_flags_basic = SA_SIGINFO | SA_NODEFER;
+  sa.sa_flags = SA_SIGINFO;
   sigfillset(&sa.sa_mask);
   sigaction(SIGTRAP, &sa, nullptr);
   int res = test_trap_flag();
   printf("res = %d\n", res);
 }
+
+#elif defined _WIN32
+#include <windows.h>
+long signalHandler(PEXCEPTION_POINTERS pExceptionInfo) {
+  DWORD const exceptionCode = pExceptionInfo->ExceptionRecord->ExceptionCode;
+  if (exceptionCode == STATUS_BREAKPOINT) {
+    printf("Break point triggered\n");
+#ifdef _M_ARM64
+    pExceptionInfo->ContextRecord->Pc += 4;
+#endif
+  }
+
+  return EXCEPTION_CONTINUE_EXECUTION;
+}
+void hardware_single_step_demo() {
+  AddVectoredExceptionHandler(
+      1, reinterpret_cast<PVECTORED_EXCEPTION_HANDLER>(signalHandler));
+  int a = 1;
+
+#ifdef _M_ARM64
+  asm("brk 0xF000\n");
+#endif
+  printf("a is %d\n", a);
+}
+
+#endif
