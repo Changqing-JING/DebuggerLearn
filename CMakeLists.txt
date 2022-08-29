@@ -3,6 +3,7 @@ project(DebuggerLearn)
 
 if(MSVC)
 set(CMAKE_SUPPRESS_REGENERATION ON)
+add_subdirectory(WindowsDebugger)
 endif()
 
 aux_source_directory(src sourceFiles)

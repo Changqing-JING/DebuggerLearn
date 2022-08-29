@@ -54,7 +54,9 @@ void signalHandler(int32_t const code, siginfo_t *const si, void *const ptr) {
     printf("ptr is %p\n", ptr);
 #ifdef __aarch64__
     if (trigger == 0) {
-      uc->uc_mcontext.pstate |= (1 << 21);
+      uc->uc_mcontext.pc += 4;
+      uint64_t ssMask = 1U << 21U;
+      uc->uc_mcontext.pstate |= ssMask;
       trigger = 1;
     } else {
       exit(0);
