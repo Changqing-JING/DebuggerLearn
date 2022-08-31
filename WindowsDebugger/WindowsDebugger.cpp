@@ -2,14 +2,15 @@
 #include <windows.h>
 #include <DbgHelp.h>
 // clang-format on
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
-#include <array>
 
 #pragma comment(lib, "dbghelp.lib")
 
@@ -33,8 +34,8 @@ Instruction instruction{};
 static HANDLE getThreadHandleByID(DWORD threadId) {
   HANDLE handle = OpenThread(THREAD_ALL_ACCESS, 0, threadId);
   if (handle == INVALID_HANDLE_VALUE) {
-      printf("OpenThread failed %ld\n", GetLastError());
-      exit(1);
+    printf("OpenThread failed %ld\n", GetLastError());
+    exit(1);
   }
   return handle;
 }
@@ -42,8 +43,8 @@ static HANDLE getThreadHandleByID(DWORD threadId) {
 static HANDLE getProcessHandleByID(DWORD processId) {
   HANDLE handle = OpenProcess(THREAD_ALL_ACCESS, 0, processId);
   if (handle == INVALID_HANDLE_VALUE) {
-      printf("OpenProcess failed %ld\n", GetLastError());
-      exit(1);
+    printf("OpenProcess failed %ld\n", GetLastError());
+    exit(1);
   }
   return handle;
 }
@@ -52,7 +53,8 @@ static void setBreakPoint(HANDLE processHandle, void *address) {
   SIZE_T dwRead;
 
   BOOL success =
-      ReadProcessMemory(processHandle, address, &instruction.firstByte, sizeof(instruction.firstByte), &dwRead);
+      ReadProcessMemory(processHandle, address, &instruction.firstByte,
+                        sizeof(instruction.firstByte), &dwRead);
 
   if (success == 0) {
     printf("ReadProcessMemory failed\n");
@@ -168,7 +170,7 @@ static DWORD getDebugInfoFromPipe() {
     exit(1);
   }
 
-  std::array<uint8_t, sizeof(DWORD) + sizeof(void*)> buffer;
+  std::array<uint8_t, sizeof(DWORD) + sizeof(void *)> buffer{};
   DWORD dwRead = 0;
 
   while (dwRead == 0) {
@@ -176,7 +178,7 @@ static DWORD getDebugInfoFromPipe() {
   }
   DWORD processId;
   memcpy(&processId, buffer.data(), sizeof(DWORD));
-  memcpy(&breakPointAddress, buffer.data() + sizeof(DWORD), sizeof(void*));
+  memcpy(&breakPointAddress, buffer.data() + sizeof(DWORD), sizeof(void *));
 
   CloseHandle(hPipe);
   return processId;
@@ -185,16 +187,16 @@ static DWORD getDebugInfoFromPipe() {
 void attachToProcess(DWORD processID) {
   BOOL success = DebugActiveProcess(processID);
   if (success == 0) {
-    printf("DebugActiveProcess");
+    printf("DebugActiveProcess failed");
     exit(1);
   }
 }
 
 int main(int argc, const char *argv[]) {
 
-    DWORD processId = getDebugInfoFromPipe();
-    attachToProcess(processId);
-  
+  DWORD processId = getDebugInfoFromPipe();
+  attachToProcess(processId);
+
   while (true) {
     DEBUG_EVENT debugEvent{};
     BOOL waitEvent = TRUE;

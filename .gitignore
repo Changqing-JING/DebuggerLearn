@@ -3,3 +3,4 @@ build_win
 .cache
 .vscode
 build_win_arm
+build_qnx

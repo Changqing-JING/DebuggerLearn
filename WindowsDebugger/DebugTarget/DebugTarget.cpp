@@ -1,9 +1,9 @@
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <string>
 #include <thread>
-#include <array>
 #include <windows.h>
 
 uint64_t num = 0x1122334455667788U;
@@ -31,19 +31,18 @@ void writeProcessIdToPipe(DWORD processId) {
 
     DWORD writtenSize;
 
-    void* fooAddress = reinterpret_cast<void*>(&foo);
+    void *fooAddress = reinterpret_cast<void *>(&foo);
 
-    std::array<uint8_t, sizeof(DWORD) + sizeof(void*)> buf;
+    std::array<uint8_t, sizeof(DWORD) + sizeof(void *)> buf{};
 
     memcpy(buf.data(), &processId, sizeof(DWORD));
-    memcpy(buf.data() + sizeof(DWORD), &fooAddress, sizeof(void*));
+    memcpy(buf.data() + sizeof(DWORD), &fooAddress, sizeof(void *));
 
-    BOOL success = WriteFile(hPipe, buf.data(), buf.size(),
-                             &writtenSize, NULL);
+    BOOL success = WriteFile(hPipe, buf.data(), buf.size(), &writtenSize, NULL);
 
     if (success == 0) {
-        printf("Write Pipe failed %lx\n", GetLastError());
-        exit(1);
+      printf("Write Pipe failed %lx\n", GetLastError());
+      exit(1);
     }
 
     success = FlushFileBuffers(hPipe);
@@ -58,14 +57,13 @@ void writeProcessIdToPipe(DWORD processId) {
   CloseHandle(hPipe);
 }
 
-int main(int argc, const char* argv[]) {
+int main(int argc, const char *argv[]) {
   DWORD processId = GetCurrentProcessId();
   printf("process id is %ld, num address is %p, foo address is %p\n", processId,
          &num, &foo);
 
   writeProcessIdToPipe(processId);
 
-  
   while (true) {
     foo();
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
