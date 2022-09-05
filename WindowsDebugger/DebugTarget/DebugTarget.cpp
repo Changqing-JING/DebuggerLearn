@@ -8,7 +8,12 @@
 
 uint64_t num = 0x1122334455667788U;
 
-void foo() { return; }
+void foo() { 
+#ifdef _M_ARM64
+    asm("mov x0, 1\n");
+#endif
+    return; 
+}
 
 void writeProcessIdToPipe(DWORD processId) {
   HANDLE hPipe =
@@ -66,7 +71,8 @@ int main(int argc, const char *argv[]) {
 
   while (true) {
     foo();
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    printf("Hello Debugger\n");
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   }
   return 0;
 }

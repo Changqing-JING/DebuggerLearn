@@ -1,4 +1,5 @@
 #include <array>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -23,17 +24,9 @@ void writeProcessIdToPipe(pid_t processId) {
   memcpy(buf.data(), &processId, sizeof(pid_t));
   memcpy(buf.data() + sizeof(pid_t), &fooAddress, sizeof(void *));
 
-  const char *fifoname = "/tmp/debugger.fifo";
-  unlink(fifoname);
+  const char *fifoname = "/tmp/debug.fifo";
 
-  int error = mkfifo(fifoname, S_IRWXU);
-
-  if (error != 0) {
-    perror("mkfifo failed");
-    exit(1);
-  }
-
-  int fd = open(fifoname, 666);
+  int fd = open(fifoname, O_WRONLY | O_CREAT | O_TRUNC, 666);
 
   if (fd < 0) {
     perror("open pipe failed");
@@ -54,11 +47,12 @@ int main(int argc, const char *argv[]) {
          &num, &foo);
 
   writeProcessIdToPipe(processId);
+  uint32_t counter = 0;
 
   while (true) {
     foo();
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    printf("Hello Debugger\n");
+    printf("Hello Debugger %d\n", counter++);
   }
   return 0;
 }

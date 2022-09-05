@@ -26,7 +26,7 @@ void *breakPointAddress = reinterpret_cast<void *>(0x00007FF6ABE31000);
 
 typedef struct {
   void *addr;
-  uint8_t firstByte;
+  uint32_t backup;
 } Instruction;
 
 Instruction instruction{};
@@ -52,9 +52,8 @@ static HANDLE getProcessHandleByID(DWORD processId) {
 static void setBreakPoint(HANDLE processHandle, void *address) {
   SIZE_T dwRead;
 
-  BOOL success =
-      ReadProcessMemory(processHandle, address, &instruction.firstByte,
-                        sizeof(instruction.firstByte), &dwRead);
+  BOOL success = ReadProcessMemory(processHandle, address, &instruction.backup,
+                                   sizeof(instruction.backup), &dwRead);
 
   if (success == 0) {
     printf("ReadProcessMemory failed\n");
@@ -64,11 +63,16 @@ static void setBreakPoint(HANDLE processHandle, void *address) {
   printf("process created\n");
 
   instruction.addr = address;
+#ifdef _M_X64
+  constexpr byte int3 = 0xCC;
+  uint32_t debugInstruction = int3;
+#elif (defined _M_ARM64)
+  constexpr uint32_t brk = 0xd43e0000;
+  uint32_t debugInstruction = brk;
+#endif
 
-  byte int3 = 0xCC;
-
-  success =
-      WriteProcessMemory(processHandle, address, &int3, sizeof(byte), &dwRead);
+  success = WriteProcessMemory(processHandle, address, &debugInstruction,
+                               sizeof(debugInstruction), &dwRead);
 
   if (success == 0) {
     printf("WriteProcessMemory failed\n");
@@ -89,35 +93,54 @@ void onProcessCreated(const CREATE_PROCESS_DEBUG_INFO *const debugInfo) {
 void onException(DEBUG_EVENT const &debugEvent) {
   const EXCEPTION_DEBUG_INFO *const exceptionInfo = &debugEvent.u.Exception;
   const DWORD exceptionCode = exceptionInfo->ExceptionRecord.ExceptionCode;
-  std::cout << "Debug target exception happens address: "
-            << exceptionInfo->ExceptionRecord.ExceptionAddress
-            << ", code: " << std::hex << exceptionCode << std::endl;
-  if (exceptionInfo->dwFirstChance == TRUE) {
-    if (exceptionInfo->ExceptionRecord.ExceptionAddress == instruction.addr &&
-        exceptionCode == EXCEPTION_BREAKPOINT) {
-      SIZE_T dwWrite;
-      HANDLE threadHandle = getThreadHandleByID(debugEvent.dwThreadId);
-      HANDLE processHandle = getProcessHandleByID(debugEvent.dwProcessId);
-      WriteProcessMemory(processHandle, instruction.addr,
-                         &instruction.firstByte, sizeof(byte), &dwWrite);
 
-      CONTEXT context{};
-      context.ContextFlags = CONTEXT_CONTROL;
-      BOOL success = GetThreadContext(threadHandle, &context);
-      if (success == 0) {
-        perror("GetThreadContext failed");
-        exit(1);
+  if (exceptionInfo->dwFirstChance == TRUE) {
+    if (exceptionCode == EXCEPTION_BREAKPOINT) {
+      std::cout << "EXCEPTION_BREAKPOINT happens address: "
+                << exceptionInfo->ExceptionRecord.ExceptionAddress << std::endl;
+      if (exceptionInfo->ExceptionRecord.ExceptionAddress == instruction.addr) {
+        SIZE_T dwWrite;
+        HANDLE threadHandle = getThreadHandleByID(debugEvent.dwThreadId);
+        HANDLE processHandle = getProcessHandleByID(debugEvent.dwProcessId);
+        BOOL success = WriteProcessMemory(processHandle, instruction.addr,
+                                          &instruction.backup,
+                                          sizeof(instruction.backup), &dwWrite);
+        if (success == 0) {
+          printf("WriteProcessMemory at %p failed %ld\n", instruction.addr,
+                 GetLastError());
+          exit(1);
+        }
+
+        CONTEXT context{};
+        context.ContextFlags = CONTEXT_ALL;
+        success = GetThreadContext(threadHandle, &context);
+        if (success == 0) {
+          perror("GetThreadContext failed");
+          exit(1);
+        }
+#ifdef _M_X64
+        context.Rip--;
+        context.EFlags |= 0x100; // Single step
+#elif (defined _M_ARM64)
+        context.Pc -= 4;
+        context.Cpsr |= 0x200000;
+#endif
+
+        success = SetThreadContext(threadHandle, &context);
+        if (success == 0) {
+          perror("SetThreadContext failed");
+          exit(1);
+        }
+        CloseHandle(threadHandle);
+        CloseHandle(processHandle);
       }
-      context.Rip--;
-      success = SetThreadContext(threadHandle, &context);
-      if (success == 0) {
-        perror("SetThreadContext failed");
-        exit(1);
-      }
-      CloseHandle(threadHandle);
-      CloseHandle(processHandle);
+      continueStatus = DBG_CONTINUE;
+    } else if (exceptionCode == EXCEPTION_SINGLE_STEP) {
+      std::cout << "STATUS_SINGLE_STEP happens address: "
+                << exceptionInfo->ExceptionRecord.ExceptionAddress << std::endl;
       continueStatus = DBG_CONTINUE;
     } else {
+      printf("unknow error %lx\n", exceptionCode);
       continueStatus = DBG_EXCEPTION_NOT_HANDLED;
     }
   } else {
@@ -199,7 +222,6 @@ int main(int argc, const char *argv[]) {
 
   while (true) {
     DEBUG_EVENT debugEvent{};
-    BOOL waitEvent = TRUE;
     BOOL success = WaitForDebugEvent(&debugEvent, INFINITE);
     if (success == 0) {
       break;
@@ -219,10 +241,8 @@ int main(int argc, const char *argv[]) {
     }
     }
 
-    if (waitEvent == TRUE) {
-      ContinueDebugEvent(debugEvent.dwProcessId, debugEvent.dwThreadId,
-                         continueStatus);
-    }
+    ContinueDebugEvent(debugEvent.dwProcessId, debugEvent.dwThreadId,
+                       continueStatus);
   }
 
   return 0;

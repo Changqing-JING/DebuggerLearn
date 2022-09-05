@@ -55,7 +55,7 @@ void signalHandler(int32_t const code, siginfo_t *const si, void *const ptr) {
 #ifdef __aarch64__
     if (trigger == 0) {
       uc->uc_mcontext.pc += 4;
-      uint64_t ssMask = 1U << 21U;
+      constexpr uint64_t ssMask = 1U << 21U;
       uc->uc_mcontext.pstate |= ssMask;
       trigger = 1;
     } else {
@@ -86,11 +86,16 @@ void hardware_single_step_demo() {
 #include <windows.h>
 long signalHandler(PEXCEPTION_POINTERS pExceptionInfo) {
   DWORD const exceptionCode = pExceptionInfo->ExceptionRecord->ExceptionCode;
+  
   if (exceptionCode == STATUS_BREAKPOINT) {
-    printf("Break point triggered\n");
 #ifdef _M_ARM64
+    printf("Break point triggered at %p\n", pExceptionInfo->ExceptionRecord->ExceptionAddress);
     pExceptionInfo->ContextRecord->Pc += 4;
+    pExceptionInfo->ContextRecord->Cpsr |= 0x200000;
 #endif
+  }
+  else if (exceptionCode == STATUS_SINGLE_STEP) {
+      printf("Single step triggered at %p\n", pExceptionInfo->ExceptionRecord->ExceptionAddress);
   }
 
   return EXCEPTION_CONTINUE_EXECUTION;
