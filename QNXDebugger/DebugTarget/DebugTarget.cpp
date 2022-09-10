@@ -1,6 +1,7 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -41,7 +42,27 @@ void writeProcessIdToPipe(pid_t processId) {
   }
 }
 
+void signalHandler(int32_t const code, siginfo_t *const si, void *const ptr) {
+  ucontext_t *const uc = reinterpret_cast<ucontext_t *>(ptr);
+  if (code == SIGTRAP) {
+    char msg[] = "SIGTRAP happens\n";
+    write(STDOUT_FILENO, &msg, sizeof(msg));
+    /// exit(1);
+  }
+
+  return;
+}
+
+void setSignalHandler() {
+  struct sigaction sa = {};
+  sa.sa_sigaction = signalHandler;
+  sa.sa_flags = SA_SIGINFO;
+  sigfillset(&sa.sa_mask);
+  sigaction(SIGTRAP, &sa, nullptr);
+}
+
 int main(int argc, const char *argv[]) {
+
   pid_t processId = getpid();
   printf("process id is %d, num address is %p, foo address is %p\n", processId,
          &num, &foo);

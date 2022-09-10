@@ -11,7 +11,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-static unsigned long LowByte0Mask = ~(0xFF);
+static constexpr unsigned long LowByte0Mask = ~(0xFF);
 
 static constexpr unsigned char INT3 = 0xCC;
 
